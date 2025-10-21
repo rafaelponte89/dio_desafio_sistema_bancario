@@ -3,8 +3,33 @@
 clientes = {}
 contas = {}
 conta = 0
-logs = [""]
+mensagens = [""]
+from datetime import datetime
+import csv
+from pathlib import Path
 
+BASE = Path(__file__).parent
+def datar_extrato(funcao):
+    def envelope(*args, **kwargs):
+        print("\n")
+        print("="*100)
+        print("Data Extrato", datetime.strftime(datetime.now(), "%d/%m/%Y - %H:%M"))
+        return funcao(*args, **kwargs)
+
+    return envelope
+
+def escrever_log(funcao):
+    def envelope(*args, **kwargs):
+        print("escrever log")
+        with open(f'{BASE}/logs.csv', mode="a", newline="", encoding="utf-8") as log:
+            escritor = csv.writer(log)
+            if log.tell()==0:
+                escritor.writerow(["data_hora","operacao"])
+            escritor.writerow([datetime.strftime(datetime.now(), "%d/%m/%Y - %H:%M:%S"), funcao.__name__])
+        return funcao(*args, **kwargs)
+    return envelope
+
+@escrever_log
 def sacar(*, valor, cpf, conta): # sugestao retorno saldo, extrato
     saldo =  contas[cpf]["Contas"][conta]["saldo"]
     extrato = contas[cpf]["Contas"] [conta]["extrato"]
@@ -14,13 +39,14 @@ def sacar(*, valor, cpf, conta): # sugestao retorno saldo, extrato
         lancar_no_extrato = f"{'(D) ----- - R$':<15} {valor:<15.2f}".center(30)
         extrato += f"\n{lancar_no_extrato}"
         contas[cpf]["Contas"][conta] = {"saldo":saldo, "extrato": extrato }
-        logs.append(f"Saque efetuado com sucesso")
+        mensagens.append(f"Saque efetuado com sucesso")
 
     else:
-        logs.append("Saldo insuficiente para o valor do saque!!!")
+        mensagens.append("Saldo insuficiente para o valor do saque!!!")
     
-    return saldo, extrato
+   
 
+@escrever_log
 def depositar(valor, cpf, conta,/): # sugestao retorno saldo, extrato
    
     # Linha a ser incluída no extrato
@@ -32,27 +58,27 @@ def depositar(valor, cpf, conta,/): # sugestao retorno saldo, extrato
     extrato += f"\n{lancar_no_extrato}"
     contas[cpf]["Contas"][conta] = {"saldo":saldo, "extrato": extrato }
 
-    return saldo, extrato
-    
+@escrever_log
+@datar_extrato  
 def exibir_extrato(cpf, /, *, conta):
     extrato = contas[cpf]["Contas"][conta]["extrato"]
-
-    if extrato:      
-        logs.append(extrato)
-    else:
-        logs.append("Sem extratos!")
-    return extrato
-   
+    saldo = contas[cpf]["Contas"][conta]["saldo"]
+    print(f"Saldo: R$ {saldo:.2f}")
+    print(f"Extrato: {extrato}")
+ 
+@escrever_log
 def criar_cliente(nome, data_nascimento, cpf, endereco): # nao pode cadastrar dois clientes com mesmo cpf 
     print('\n')
                                                      # endereço: Avenida 100, nº 1071 - Brazão - Orlândia/SP
     if cpf not in clientes:
         clientes[cpf] = {"nome": nome, "data_nascimento": data_nascimento,"endereco": endereco} 
-        logs.append(f"Cliente de CPF {cpf} cadastrado com sucesso!")
+        mensagens.append(f"Cliente de CPF {cpf} cadastrado com sucesso!")
 
     else:
-        logs.append(f"Cliente de CPF {cpf} já possui cadastro!")
+        mensagens.append(f"Cliente de CPF {cpf} já possui cadastro!")
 
+
+@escrever_log
 def criar_conta(cpf, conta): # Agencia, Número da Conta, Usuário, Agencia 0001, Conta Sequencial 1, 2, 3 ... 
                   # Usuário pode ter mais de uma conta, mas a conta só pode ter um usuário
     print('\n')
@@ -64,11 +90,12 @@ def criar_conta(cpf, conta): # Agencia, Número da Conta, Usuário, Agencia 0001
             contas[cpf] = {"Agencia":agencia, "Contas": {} }
 
         contas[cpf]["Contas"][conta] = {"saldo": 0, "extrato":''}
-        logs.append(f"Conta nº {conta} vinculada com sucesso ao CPF {cpf}!")
+        mensagens.append(f"Conta nº {conta} vinculada com sucesso ao CPF {cpf}!")
         
     else:
-        logs.append("\033[31m É necessário ser cliente para abrir conta! \nUse a opção ===> [1] para cadastrar o cliente!\033[0m")    
+        mensagens.append("\033[31m É necessário ser cliente para abrir conta! \nUse a opção ===> [1] para cadastrar o cliente!\033[0m")    
 
+@escrever_log
 def listar_clientes():
     print('\n')
     numero_clientes = 0
@@ -79,11 +106,12 @@ def listar_clientes():
         for cpf, dados in clientes.items():
             print(f"{cpf:<15} | {dados["nome"]:<30}")
             numero_clientes += 1
-        logs.append(f"{numero_clientes} clientes listados com sucesso!")
+        mensagens.append(f"{numero_clientes} clientes listados com sucesso!")
         
     else:
-        logs.append("A lista de clientes está vazia!")
+        mensagens.append("A lista de clientes está vazia!")
 
+@escrever_log
 def listar_contas_cliente(cpf):
     contas_cliente = contas[cpf]["Contas"].keys()
 
@@ -136,15 +164,14 @@ while True:
             valor = float(input("Digite o Valor da Operação: "))
 
             if tipo_operacao == 'D':
-                saldo, extrato = depositar(valor, cpf, conta)
-                print(f"Extrato: {extrato}")
-                print(f"Saldo: R${saldo:.2f}")
+                depositar(valor, cpf, conta)
                 logs.append(f"Depósito efetuado com sucesso!")
+                exibir_extrato(cpf, conta = conta)
 
             elif tipo_operacao == 'S':
-                saldo, extrato = sacar(valor=valor, cpf=cpf, conta=conta)
-                print(f"Extrato: {extrato}")
-                print(f"Saldo: R${saldo:.2f}")
+                sacar(valor=valor, cpf=cpf, conta=conta)
+                exibir_extrato(cpf, conta = conta)
+
             else:
                 logs.append(f"Opção '{tipo_operacao}' Inválida!")
         else:
@@ -157,7 +184,7 @@ while True:
             listar_contas_cliente(cpf)
             conta = int(input("Nº da Conta: "))
             exibir_extrato(cpf, conta=conta)
-
+            
         else:
             logs.append(f"Cliente de CPF {cpf} não localizado!")
 
