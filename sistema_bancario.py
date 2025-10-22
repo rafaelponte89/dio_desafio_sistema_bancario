@@ -3,12 +3,12 @@
 clientes = {}
 contas = {}
 conta = 0
-mensagens = [""]
+mensagem = [""]
 from datetime import datetime
 import csv
 from pathlib import Path
-
 BASE = Path(__file__).parent
+
 def datar_extrato(funcao):
     def envelope(*args, **kwargs):
         print("\n")
@@ -18,18 +18,21 @@ def datar_extrato(funcao):
 
     return envelope
 
-def escrever_log(funcao):
+def escrever_log_transacao(funcao):
     def envelope(*args, **kwargs):
-        print("escrever log")
-        with open(f'{BASE}/logs.csv', mode="a", newline="", encoding="utf-8") as log:
+        linha = []
+        linha.extend([datetime.strftime(datetime.now(), "%d/%m/%Y - %H:%M:%S"), funcao.__name__])
+        linha.extend([l for l in args or kwargs.values()])
+        
+        with open(f'{BASE}/log_transacao.csv', mode="a", newline="", encoding="utf-8") as log:
             escritor = csv.writer(log)
             if log.tell()==0:
-                escritor.writerow(["data_hora","operacao"])
-            escritor.writerow([datetime.strftime(datetime.now(), "%d/%m/%Y - %H:%M:%S"), funcao.__name__])
+                escritor.writerow(["data_hora","operacao","valor","cpf","n_conta"])
+            escritor.writerow(linha)
         return funcao(*args, **kwargs)
     return envelope
 
-@escrever_log
+@escrever_log_transacao
 def sacar(*, valor, cpf, conta): # sugestao retorno saldo, extrato
     saldo =  contas[cpf]["Contas"][conta]["saldo"]
     extrato = contas[cpf]["Contas"] [conta]["extrato"]
@@ -39,14 +42,13 @@ def sacar(*, valor, cpf, conta): # sugestao retorno saldo, extrato
         lancar_no_extrato = f"{'(D) ----- - R$':<15} {valor:<15.2f}".center(30)
         extrato += f"\n{lancar_no_extrato}"
         contas[cpf]["Contas"][conta] = {"saldo":saldo, "extrato": extrato }
-        mensagens.append(f"Saque efetuado com sucesso")
+        mensagem[0] = "Saque efetuado com sucesso"
 
     else:
-        mensagens.append("Saldo insuficiente para o valor do saque!!!")
+        mensagem[0] = "Saldo insuficiente para o valor do saque!!!"
     
    
-
-@escrever_log
+@escrever_log_transacao
 def depositar(valor, cpf, conta,/): # sugestao retorno saldo, extrato
    
     # Linha a ser incluída no extrato
@@ -58,7 +60,7 @@ def depositar(valor, cpf, conta,/): # sugestao retorno saldo, extrato
     extrato += f"\n{lancar_no_extrato}"
     contas[cpf]["Contas"][conta] = {"saldo":saldo, "extrato": extrato }
 
-@escrever_log
+
 @datar_extrato  
 def exibir_extrato(cpf, /, *, conta):
     extrato = contas[cpf]["Contas"][conta]["extrato"]
@@ -66,19 +68,18 @@ def exibir_extrato(cpf, /, *, conta):
     print(f"Saldo: R$ {saldo:.2f}")
     print(f"Extrato: {extrato}")
  
-@escrever_log
+
 def criar_cliente(nome, data_nascimento, cpf, endereco): # nao pode cadastrar dois clientes com mesmo cpf 
     print('\n')
                                                      # endereço: Avenida 100, nº 1071 - Brazão - Orlândia/SP
     if cpf not in clientes:
         clientes[cpf] = {"nome": nome, "data_nascimento": data_nascimento,"endereco": endereco} 
-        mensagens.append(f"Cliente de CPF {cpf} cadastrado com sucesso!")
+        mensagem[0] = f"Cliente de CPF {cpf} cadastrado com sucesso!"
 
     else:
-        mensagens.append(f"Cliente de CPF {cpf} já possui cadastro!")
+        mensagem[0] = f"Cliente de CPF {cpf} já possui cadastro!"
 
 
-@escrever_log
 def criar_conta(cpf, conta): # Agencia, Número da Conta, Usuário, Agencia 0001, Conta Sequencial 1, 2, 3 ... 
                   # Usuário pode ter mais de uma conta, mas a conta só pode ter um usuário
     print('\n')
@@ -90,12 +91,12 @@ def criar_conta(cpf, conta): # Agencia, Número da Conta, Usuário, Agencia 0001
             contas[cpf] = {"Agencia":agencia, "Contas": {} }
 
         contas[cpf]["Contas"][conta] = {"saldo": 0, "extrato":''}
-        mensagens.append(f"Conta nº {conta} vinculada com sucesso ao CPF {cpf}!")
+        mensagem[0] = f"Conta nº {conta} vinculada com sucesso ao CPF {cpf}!"
         
     else:
-        mensagens.append("\033[31m É necessário ser cliente para abrir conta! \nUse a opção ===> [1] para cadastrar o cliente!\033[0m")    
+        mensagem[0] = f"\033[31m É necessário ser cliente para abrir conta! \nUse a opção ===> [1] para cadastrar o cliente!\033[0m"    
 
-@escrever_log
+
 def listar_clientes():
     print('\n')
     numero_clientes = 0
@@ -106,12 +107,11 @@ def listar_clientes():
         for cpf, dados in clientes.items():
             print(f"{cpf:<15} | {dados["nome"]:<30}")
             numero_clientes += 1
-        mensagens.append(f"{numero_clientes} clientes listados com sucesso!")
+        mensagem[0] = f"{numero_clientes} clientes listados com sucesso!"
         
     else:
-        mensagens.append("A lista de clientes está vazia!")
+        mensagem[0] = "A lista de clientes está vazia!"
 
-@escrever_log
 def listar_contas_cliente(cpf):
     contas_cliente = contas[cpf]["Contas"].keys()
 
@@ -131,7 +131,7 @@ while True:
    
     [0] :===> Sair
 
-    Mensagens: {logs[-1]}
+    Mensagens: {mensagem[-1]}
 ====================================================================================
 """
     print(menu)
@@ -165,7 +165,7 @@ while True:
 
             if tipo_operacao == 'D':
                 depositar(valor, cpf, conta)
-                logs.append(f"Depósito efetuado com sucesso!")
+                mensagem[0] = f"Depósito efetuado com sucesso!"
                 exibir_extrato(cpf, conta = conta)
 
             elif tipo_operacao == 'S':
@@ -173,9 +173,9 @@ while True:
                 exibir_extrato(cpf, conta = conta)
 
             else:
-                logs.append(f"Opção '{tipo_operacao}' Inválida!")
+                mensagem[0] = f"Opção '{tipo_operacao}' Inválida!"
         else:
-            logs.append(f"Cliente de CPF {cpf} não localizado!")
+            mensagem[0] = f"Cliente de CPF {cpf} não localizado!"
         
     elif opcao == "5":
         cpf = input("Digite o CPF do cliente: ")
@@ -186,7 +186,7 @@ while True:
             exibir_extrato(cpf, conta=conta)
             
         else:
-            logs.append(f"Cliente de CPF {cpf} não localizado!")
+            mensagem[0] = f"Cliente de CPF {cpf} não localizado!"
 
     elif opcao == "0":
         break
